@@ -1,9 +1,7 @@
 $(document).ready(function() {
     var
-      // ws = new WebSocket('ws://ec2-54-191-226-244.us-west-2.compute.amazonaws.com:3500/'),
-      // getUrl = 'http://ec2-54-191-226-244.us-west-2.compute.amazonaws.com:3500/tasks?id=',
-      ws = new WebSocket('ws://127.0.0.1:3500/'),
-      getUrl = 'http://127.0.0.1:3500/tasks?id=',
+      ws = new WebSocket('ws://ec2-54-191-226-244.us-west-2.compute.amazonaws.com:3500/'),
+      getUrl = 'http://ec2-54-191-226-244.us-west-2.compute.amazonaws.com:3500/tasks?id=',
       $toDoBlock = $('.on-hach-show'),
       $start = $('.start'),
       $name = $('.name'),
