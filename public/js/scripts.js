@@ -69,6 +69,7 @@ $(document).ready(function() {
 
     $start.bind('click', function () {
         $toDoBlock.show();
+        $intro.hide();
         var hash = Math.random()*9999;
         var titleHash = (hash.toString(36)).substring(0, 5);
         window.location.hash = titleHash;
