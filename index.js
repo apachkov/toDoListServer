@@ -2,6 +2,10 @@
 
 var express = require('express');
 var app = express();
+var jsonfile = require('jsonfile');
+
+var profilesPath = './tmp/users.json';
+var usersDataFile = './tmp/data.json';
 
 app.use(express.bodyParser());
 
@@ -26,8 +30,132 @@ app.use(express.static('./public'));
  * Global variables
  */
 
+var userProfiles, tasksHistory;
+
+
+try {
+  tasksHistory = jsonfile.readFileSync(usersDataFile);
+} catch(e) {
+  tasksHistory = {};
+}
+
+function saveUsersData() {
+  jsonfile.writeFile(usersDataFile, tasksHistory, { spaces: 2 }, function (err) {
+    if (err) console.error('Error in tasksHistory saving:', err);
+  });
+}
+
+try {
+  userProfiles = jsonfile.readFileSync(profilesPath);
+} catch(e) {
+  userProfiles = [];
+}
+
+app.post('/login', function(req, res) {
+  if (!req.body.login || !req.body.password) {
+    return res.status(400).end('Wrong email or password');
+  }
+
+  var userProfile = userProfiles.filter(function(user) {
+    return user.email === req.body.login;
+  })[0];
+
+  if (!userProfile) {
+    userProfile = {
+      email: req.body.login,
+      password: req.body.password,
+      token: (Math.random()*9999999999999).toString(36).substring(0, 8),              // create new token
+      tokenExpire: Date.now() + 24 * 60 * 60 * 1000,                                  // token will be expired in this date
+      avatar: '',
+      name: '',
+      dashboard: (Math.random()*999999999).toString(36).substring(0, 5)               // create user dashboard
+    };
+
+    tasksHistory[userProfile.dashboard] = {};
+    saveUsersData();
+
+    userProfiles.push(userProfile);
+    saveUserProfiles();
+  } else if (userProfile.password !== req.body.password) {
+    return res.status(400).end('Wrong credentials');
+  } else if (userProfile.tokenExpire < Date.now()) {
+    userProfile.token = (Math.random()*9999999999999).toString(36).substring(0, 8);   // update token
+    userProfile.tokenExpire=  Date.now() + 24 * 60 * 60 * 1000;                       // token will be expired in this date
+
+    saveUserProfiles();
+  }
+
+  res.json({
+    token: userProfile.token,
+    dashboard: userProfile.dashboard
+  });
+});
+
+app.get('/profile', function(req, res) {
+  var token = req.headers.authorization || '';
+
+  token = token.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(403).end();
+  }
+
+  var userProfile = userProfiles.filter(function(user) {
+    return user.token === token;
+  })[0];
+
+  if (!userProfile) {
+    return res.status(404).end();
+  } else if (userProfile.tokenExpire < Date.now()) {
+    return res.status(401).end();
+  }
+
+  res.json({
+    avatar: userProfile.avatar,
+    name: userProfile.name,
+    email: userProfile.email
+  });
+});
+
+app.put('/profile', function(req, res) {
+  var token = req.headers.authorization || '';
+
+  token = token.replace('Bearer ', '');
+
+  if (!token) {
+    return res.status(403).end();
+  }
+
+  var userProfile = userProfiles.filter(function(user) {
+    return user.token === token;
+  })[0];
+
+  if (!userProfile) {
+    return res.status(404).end();
+  } else if (userProfile.tokenExpire < Date.now()) {
+    return res.status(401).end();
+  }
+
+  userProfile.avatar = req.body.avatar || '';
+  userProfile.name = req.body.name || '';
+  userProfile.email = req.body.email || userProfile.email;
+
+  saveUserProfiles();
+
+  res.json({
+    avatar: userProfile.avatar,
+    name: userProfile.name,
+    email: userProfile.email
+  });
+});
+
+function saveUserProfiles() {
+  jsonfile.writeFile(profilesPath, userProfiles, { spaces: 2 }, function (err) {
+    if (err) console.error('Error in userProfiles saving:', err);
+  });
+}
+
 var
-  tasksHistory = {},
   tasksConnections = {},
   errorCounter = 0,
   aliveCounter = 0,
@@ -67,7 +195,6 @@ var server = app.listen(webSocketsServerPort, function() {
   console.log((new Date()) + " Server is listening on port " + webSocketsServerPort);
 });
 
-
 /**
  * WebSocket server
  */
@@ -80,13 +207,15 @@ var wsServer = new webSocketServer({
 // This callback function is called every time someone
 // tries to connect to the WebSocket server
 wsServer.on('request', function(request) {
+  var token = request.httpRequest.headers['sec-websocket-protocol'];
+
   console.log((new Date()) + ' Connection from origin ' + request.origin + '.');
 
   // accept connection - you should check 'request.origin' to make sure that
   // client is connecting from your website
   // (http://en.wikipedia.org/wiki/Same_origin_policy)
   var
-    connection = request.accept(null, request.origin),
+    connection = request.accept(token.toLowerCase(), request.origin),
     taskName = false,
     thisBoard = null;
 
@@ -122,6 +251,7 @@ wsServer.on('request', function(request) {
 
         if (!tasksHistory[taskName]) {
           tasksHistory[taskName] = {};
+          saveUsersData();
         }
 
         thisBoard = tasksHistory[taskName];
@@ -132,7 +262,7 @@ wsServer.on('request', function(request) {
 
       if (!thisBoard) {
         sendError(msgParsed, 'Unknown user');
-        return
+        return;
       }
 
       if (msgParsed.type == 'upsert') {
@@ -141,17 +271,11 @@ wsServer.on('request', function(request) {
           return;
         }
 
-        if (!tasksHistory[taskName][msgParsed.taskId]) {
-
-          tasksHistory[taskName][msgParsed.taskId] = {
-            title: htmlEntities(msgParsed.title),
-            description: htmlEntities(msgParsed.description),
-            status: msgParsed.status
-          };
-
-        } else {
-          tasksHistory[taskName][msgParsed.taskId].status = msgParsed.status;
-        }
+        tasksHistory[taskName][msgParsed.taskId] = {
+          title: htmlEntities(msgParsed.title),
+          description: htmlEntities(msgParsed.description),
+          status: msgParsed.status
+        };
 
         sendAll(msgParsed);
       } else if (msgParsed.type == 'delete') {
@@ -166,6 +290,8 @@ wsServer.on('request', function(request) {
       } else {
         sendError(msgParsed, 'Unknown type.');
       }
+
+      saveUsersData();
     }
   });
 
