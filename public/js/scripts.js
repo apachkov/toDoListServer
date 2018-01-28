@@ -1,6 +1,6 @@
 $(document).ready(function() {
     var
-      ws = new WebSocket('ws://localhost:3500/',  ['29hiulkm']),
+      ws = new WebSocket('ws://localhost:3500/'),
       getUrl = 'http://localhost:3500/tasks?id=',
       $toDoBlock = $('.on-hach-show'),
       $start = $('.start'),

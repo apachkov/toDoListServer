@@ -51,14 +51,24 @@ try {
   userProfiles = [];
 }
 
+function getUserByEmail(email) {
+  return userProfiles.filter(function(user) {
+    return user.email === email;
+  })[0];
+}
+
+function getUserByToken(token) {
+  return userProfiles.filter(function(user) {
+    return user.token === token;
+  })[0];
+}
+
 app.post('/login', function(req, res) {
   if (!req.body.login || !req.body.password) {
     return res.status(400).end('Wrong email or password');
   }
 
-  var userProfile = userProfiles.filter(function(user) {
-    return user.email === req.body.login;
-  })[0];
+  var userProfile = getUserByEmail(email);
 
   if (!userProfile) {
     userProfile = {
@@ -126,9 +136,7 @@ app.put('/profile', function(req, res) {
     return res.status(403).end();
   }
 
-  var userProfile = userProfiles.filter(function(user) {
-    return user.token === token;
-  })[0];
+  var userProfile = getUserByToken(token);
 
   if (!userProfile) {
     return res.status(404).end();
@@ -136,9 +144,23 @@ app.put('/profile', function(req, res) {
     return res.status(401).end();
   }
 
-  userProfile.avatar = req.body.avatar || '';
-  userProfile.name = req.body.name || '';
-  userProfile.email = req.body.email || userProfile.email;
+  if ('email' in req.body && req.body.email) {
+    var isUserExists = getUserByEmail(req.body.email);
+
+    if (isUserExists && isUserExists !== userProfile) {
+      return res.status(400).end('This email already exists, choose another one!');
+    }
+
+    userProfile.email = req.body.email;
+  }
+
+  if ('avatar' in req.body) {
+    userProfile.avatar = req.body.avatar || '';
+  }
+
+  if ('name' in req.body) {
+    userProfile.name = req.body.name || '';
+  }
 
   saveUserProfiles();
 
@@ -171,11 +193,20 @@ function htmlEntities(str) {
 }
 
 app.get('/tasks', function(req, res) {
-  if (tasksHistory[req.query.id]) {
+  var token = req.headers.authorization || '';
+
+  token = token.replace('Bearer ', '');
+
+  var userProfile = getUserByToken(token) || {};
+  var dashboard = tasksHistory[userProfile.dashboard] || tasksHistory[req.query.id];
+
+  if (dashboard) {
     allDownloadsCounter++;
+  } else if (!token) {
+    return res.status(403).end();
   }
 
-  res.json(tasksHistory[req.query.id] || []);
+  res.json(dashboard || {});
 });
 
 app.get('/tasks/all', function(req, res) {
@@ -207,7 +238,7 @@ var wsServer = new webSocketServer({
 // This callback function is called every time someone
 // tries to connect to the WebSocket server
 wsServer.on('request', function(request) {
-  var token = request.httpRequest.headers['sec-websocket-protocol'];
+  var token = request.httpRequest.headers['sec-websocket-protocol'] || '';
 
   console.log((new Date()) + ' Connection from origin ' + request.origin + '.');
 
@@ -329,5 +360,4 @@ wsServer.on('request', function(request) {
       tasksConnections[taskName].splice(index, 1);
     }
   });
-
 });
