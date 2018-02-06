@@ -69,7 +69,7 @@ app.post('/login', function(req, res) {
     return res.status(400).end('Wrong email or password');
   }
 
-  var userProfile = getUserByEmail(email);
+  var userProfile = getUserByEmail(req.body.login);
 
   if (!userProfile) {
     userProfile = {
