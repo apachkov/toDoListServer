@@ -163,6 +163,10 @@ app.put('/profile', function(req, res) {
     userProfile.name = req.body.name || '';
   }
 
+  if ('password' in req.body && req.body.password) {
+    userProfile.password = req.body.password;
+  }
+
   saveUserProfiles();
 
   res.json({
